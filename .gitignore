@@ -4,8 +4,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-db.sqlite3
 .env
-staticfiles/
 finance_frontend/
 *.log
