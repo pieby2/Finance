@@ -1,1 +1,1 @@
-web: gunicorn finance_backend.wsgi --log-file -
+web: bash start.sh
