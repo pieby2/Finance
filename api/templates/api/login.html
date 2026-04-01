@@ -1,0 +1,76 @@
+{% extends "api/base.html" %}
+{% block title %}Login - Finance Dashboard{% endblock %}
+
+{% block body %}
+<div class="login-page">
+    <div class="login-box card fade-in">
+        <div class="login-logo grad-text">Finance Portal</div>
+        <p class="login-sub">Sign in to access your dashboard</p>
+
+        <div id="error-msg" class="alert alert-error" style="display:none;"></div>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="e.g. admin" required />
+            </div>
+            <div class="form-group" style="margin-bottom: 28px;">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="••••••••" required />
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%; padding: 14px;" id="login-btn">
+                Sign In
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // if already logged in, just go to dashboard
+    if (localStorage.getItem('access_token')) {
+        window.location.href = '/dashboard/';
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('login-btn');
+        const errorDiv = document.getElementById('error-msg');
+
+        btn.disabled = true;
+        btn.textContent = 'Signing in...';
+        errorDiv.style.display = 'none';
+
+        try {
+            const resp = await fetch('/api/auth/token/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!resp.ok) {
+                throw new Error('Invalid username or password.');
+            }
+
+            const data = await resp.json();
+            localStorage.setItem('access_token', data.access);
+            localStorage.setItem('refresh_token', data.refresh);
+
+            // store username for display
+            localStorage.setItem('username', username);
+
+            window.location.href = '/dashboard/';
+
+        } catch (err) {
+            errorDiv.textContent = err.message;
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Sign In';
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "api/base.html" %}
+{% block title %}Users - Finance Portal{% endblock %}
+
+{% block body %}
+<div class="shell">
+    {% include "api/sidebar.html" %}
+
+    <main class="main-content fade-in">
+        <h1 class="page-title">User Management</h1>
+
+        <div id="access-denied" style="display:none;" class="card" style="padding:40px;">
+            <div style="padding: 40px; background: rgba(239,68,68,.08); border-radius:12px; border: 1px solid rgba(239,68,68,.25);">
+                <h2 class="color-red" style="margin-bottom:12px;">&#x26D4; Access Denied</h2>
+                <p class="color-muted">You need to be an <strong>Admin</strong> to view user management.</p>
+            </div>
+        </div>
+
+        <div class="card" style="padding: 24px;" id="users-panel">
+            <div id="users-body"><div class="empty">Loading users...</div></div>
+            <div class="pagination" id="users-pagination" style="display:none;">
+                <button class="btn btn-secondary" id="prev-btn" onclick="changePage(-1)">Previous</button>
+                <span id="page-info">Page 1</span>
+                <button class="btn btn-secondary" id="next-btn" onclick="changePage(1)">Next</button>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const token = localStorage.getItem('access_token');
+    let currentPage = 1;
+    let totalPages = 1;
+
+    async function loadUsers(page) {
+        currentPage = page || currentPage;
+        const usersBody = document.getElementById('users-body');
+        usersBody.innerHTML = '<div class="empty">Loading...</div>';
+
+        try {
+            const resp = await fetch(`/api/users/?page=${currentPage}`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+
+            if (resp.status === 401) { window.location.href = '/login/'; return; }
+
+            if (resp.status === 403) {
+                document.getElementById('users-panel').style.display = 'none';
+                document.getElementById('access-denied').style.display = 'block';
+                return;
+            }
+
+            const data = await resp.json();
+            const users = data.results || data;
+            totalPages = data.count ? Math.ceil(data.count / 10) : 1;
+
+            if (users.length === 0) {
+                usersBody.innerHTML = '<div class="empty">No users found.</div>';
+                return;
+            }
+
+            const roleBadge = (role) => `<span class="badge badge-${role.toLowerCase()}">${role}</span>`;
+
+            let rows = users.map(u => `
+                <tr>
+                    <td class="color-muted">#${u.id}</td>
+                    <td><strong>${u.username}</strong></td>
+                    <td class="color-muted">${u.email || 'N/A'}</td>
+                    <td>${roleBadge(u.role)}</td>
+                </tr>`).join('');
+
+            usersBody.innerHTML = `
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th>ID</th><th>Username</th><th>Email</th><th>Role</th>
+                        </tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+
+            document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('prev-btn').disabled = currentPage === 1;
+            document.getElementById('next-btn').disabled = currentPage >= totalPages;
+            document.getElementById('users-pagination').style.display = 'flex';
+
+        } catch (err) {
+            usersBody.innerHTML = '<div class="empty color-red">Something went wrong.</div>';
+        }
+    }
+
+    function changePage(delta) {
+        const next = currentPage + delta;
+        if (next >= 1 && next <= totalPages) loadUsers(next);
+    }
+
+    loadUsers(1);
+</script>
+{% endblock %}

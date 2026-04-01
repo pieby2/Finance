@@ -1,0 +1,16 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Finance Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'api/style.css' %}" />
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+{% block body %}{% endblock %}
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

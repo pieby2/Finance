@@ -1,0 +1,168 @@
+{% extends "api/base.html" %}
+{% block title %}Dashboard - Finance Portal{% endblock %}
+
+{% block extra_head %}
+<!-- chart.js from CDN - no npm needed -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block body %}
+<div class="shell">
+    {% block nav_dashboard %}{% include "api/sidebar.html" %}{% endblock %}
+
+    <main class="main-content fade-in">
+        <h1 class="page-title">Dashboard Overview</h1>
+
+        <!-- KPI cards - filled by JS -->
+        <div class="kpi-grid" id="kpi-grid">
+            <div class="kpi-card card">
+                <div class="kpi-label">Net Balance</div>
+                <div class="kpi-value" id="kpi-balance">—</div>
+                <div class="kpi-icon">💰</div>
+            </div>
+            <div class="kpi-card card">
+                <div class="kpi-label">Total Income</div>
+                <div class="kpi-value color-green" id="kpi-income">—</div>
+                <div class="kpi-icon">📈</div>
+            </div>
+            <div class="kpi-card card">
+                <div class="kpi-label">Total Expenses</div>
+                <div class="kpi-value" id="kpi-expense">—</div>
+                <div class="kpi-icon">📉</div>
+            </div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="charts-grid">
+            <div class="chart-card card">
+                <h3>Category Breakdown</h3>
+                <canvas id="pieChart" height="220"></canvas>
+            </div>
+            <div class="chart-card card">
+                <h3>Monthly Trends</h3>
+                <canvas id="barChart" height="220"></canvas>
+            </div>
+        </div>
+
+        <!-- Recent activity table -->
+        <div class="card" style="padding: 24px;">
+            <h3 style="margin-bottom: 20px;">Recent Activity</h3>
+            <div id="recent-body">
+                <div class="empty">Loading...</div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const token = localStorage.getItem('access_token');
+
+    function money(n) {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+    }
+
+    async function loadDashboard() {
+        try {
+            const resp = await fetch('/api/dashboard/', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (resp.status === 401) {
+                window.location.href = '/login/';
+                return;
+            }
+            const d = await resp.json();
+
+            // --- KPIs ---
+            const balEl = document.getElementById('kpi-balance');
+            balEl.textContent = money(d.net_balance);
+            balEl.className = 'kpi-value ' + (d.net_balance >= 0 ? 'color-green' : 'color-red');
+            document.getElementById('kpi-income').textContent = money(d.total_income);
+            document.getElementById('kpi-expense').textContent = money(d.total_expenses);
+
+            // --- Pie chart (category totals) ---
+            const catLabels = d.category_totals.map(c => c.category);
+            const catData   = d.category_totals.map(c => c.total);
+            const pieColors = ['#3b82f6','#8b5cf6','#10b981','#ef4444','#f59e0b','#6366f1','#ec4899'];
+
+            new Chart(document.getElementById('pieChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: catLabels,
+                    datasets: [{ data: catData, backgroundColor: pieColors, borderWidth: 0 }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#9ca3af', boxWidth: 12 } }
+                    }
+                }
+            });
+
+            // --- Bar chart (monthly trends) ---
+            const months = d.monthly_trends.map(m => {
+                const dt = new Date(m.month);
+                return dt.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+            });
+            const amounts = d.monthly_trends.map(m => m.total);
+
+            new Chart(document.getElementById('barChart'), {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Amount',
+                        data: amounts,
+                        backgroundColor: 'rgba(59,130,246,.7)',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
+                        y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,.04)' } }
+                    }
+                }
+            });
+
+            // --- Recent activity ---
+            const recentDiv = document.getElementById('recent-body');
+            if (typeof d.recent_activity === 'string') {
+                recentDiv.innerHTML = `<div class="empty">${d.recent_activity}</div>`;
+            } else if (d.recent_activity.length === 0) {
+                recentDiv.innerHTML = '<div class="empty">No recent transactions.</div>';
+            } else {
+                let rows = d.recent_activity.map(r => `
+                    <tr>
+                        <td>${r.date}</td>
+                        <td><span class="badge badge-${r.transaction_type.toLowerCase()}">${r.transaction_type}</span></td>
+                        <td>${r.category}</td>
+                        <td class="color-muted">${r.notes || '—'}</td>
+                        <td style="text-align:right; font-weight:600;"
+                            class="${r.transaction_type === 'INCOME' ? 'color-green' : ''}">
+                            ${r.transaction_type === 'EXPENSE' ? '-' : '+'}${money(r.amount)}
+                        </td>
+                    </tr>`).join('');
+                recentDiv.innerHTML = `
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr>
+                                <th>Date</th><th>Type</th><th>Category</th>
+                                <th>Notes</th><th style="text-align:right">Amount</th>
+                            </tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>`;
+            }
+
+        } catch (err) {
+            console.error('Dashboard load error:', err);
+        }
+    }
+
+    loadDashboard();
+</script>
+{% endblock %}

@@ -1,0 +1,236 @@
+{% extends "api/base.html" %}
+{% block title %}Records - Finance Portal{% endblock %}
+
+{% block body %}
+<div class="shell">
+    {% include "api/sidebar.html" %}
+
+    <main class="main-content fade-in">
+        <div class="flex-between mb-24">
+            <h1 class="page-title" style="margin-bottom:0;">Financial Records</h1>
+            <button class="btn btn-primary" onclick="openModal()">
+                <!-- plus icon -->
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Add Record
+            </button>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar card">
+            <span class="color-muted" style="white-space:nowrap; font-size:.9em;">
+                <!-- filter icon -->
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:middle; margin-right:4px;">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                </svg>
+                Filters
+            </span>
+            <select id="filter-type" onchange="loadRecords(1)">
+                <option value="">All Types</option>
+                <option value="INCOME">Income</option>
+                <option value="EXPENSE">Expense</option>
+            </select>
+            <input type="text" id="filter-category" placeholder="Category" oninput="loadRecords(1)" />
+            <input type="date" id="filter-start" onchange="loadRecords(1)" />
+            <input type="date" id="filter-end" onchange="loadRecords(1)" />
+        </div>
+
+        <!-- Records table -->
+        <div class="card" style="padding: 24px;">
+            <div id="records-body"><div class="empty">Loading records...</div></div>
+            <div class="pagination" id="records-pagination" style="display:none;">
+                <button class="btn btn-secondary" id="prev-btn" onclick="changePage(-1)">Previous</button>
+                <span id="page-info">Page 1</span>
+                <button class="btn btn-secondary" id="next-btn" onclick="changePage(1)">Next</button>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Create Record Modal -->
+<div class="modal-overlay" id="record-modal">
+    <div class="modal-box card">
+        <div class="modal-header">
+            <h2>Create Record</h2>
+            <button class="close-btn" onclick="closeModal()">&#x2715;</button>
+        </div>
+        <div id="modal-error" class="alert alert-error" style="display:none;"></div>
+        <form id="create-form">
+            <div class="form-group">
+                <label>Type</label>
+                <select name="transaction_type">
+                    <option value="EXPENSE">Expense</option>
+                    <option value="INCOME">Income</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Amount</label>
+                <input type="number" name="amount" step="0.01" min="0.01" placeholder="0.00" required />
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <input type="text" name="category" placeholder="e.g. Utilities" required />
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" name="date" required />
+            </div>
+            <div class="form-group">
+                <label>Notes (optional)</label>
+                <textarea name="notes" rows="3" placeholder="Any extra notes..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%; margin-top:8px;">Save Record</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const token = localStorage.getItem('access_token');
+    let currentPage = 1;
+    let totalPages = 1;
+
+    function money(n) {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+    }
+
+    async function loadRecords(page) {
+        currentPage = page || currentPage;
+        const typeVal = document.getElementById('filter-type').value;
+        const catVal  = document.getElementById('filter-category').value;
+        const startVal= document.getElementById('filter-start').value;
+        const endVal  = document.getElementById('filter-end').value;
+
+        // build query string manually
+        let qs = `page=${currentPage}`;
+        if (typeVal)  qs += `&transaction_type=${typeVal}`;
+        if (catVal)   qs += `&category=${catVal}`;
+        if (startVal) qs += `&start_date=${startVal}`;
+        if (endVal)   qs += `&end_date=${endVal}`;
+
+        const recordsBody = document.getElementById('records-body');
+        recordsBody.innerHTML = '<div class="empty">Loading...</div>';
+
+        try {
+            const resp = await fetch(`/api/records/?${qs}`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+
+            if (resp.status === 401) { window.location.href = '/login/'; return; }
+            if (resp.status === 403) {
+                recordsBody.innerHTML = '<div class="empty color-red">You do not have permission to view records.</div>';
+                return;
+            }
+
+            const data = await resp.json();
+            const records = data.results || data;
+            totalPages = data.count ? Math.ceil(data.count / 10) : 1;
+
+            if (records.length === 0) {
+                recordsBody.innerHTML = '<div class="empty">No records found matching your criteria.</div>';
+                document.getElementById('records-pagination').style.display = 'none';
+                return;
+            }
+
+            let rows = records.map(r => `
+                <tr>
+                    <td>${r.date}</td>
+                    <td><span class="badge badge-${r.transaction_type.toLowerCase()}">${r.transaction_type}</span></td>
+                    <td>${r.category}</td>
+                    <td class="color-muted">${r.notes || '—'}</td>
+                    <td style="text-align:right; font-weight:600;">
+                        ${money(r.amount)}
+                    </td>
+                </tr>`).join('');
+
+            recordsBody.innerHTML = `
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th>Date</th><th>Type</th><th>Category</th>
+                            <th>Notes</th><th style="text-align:right">Amount</th>
+                        </tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+
+            // update pagination
+            const pageInfo = document.getElementById('page-info');
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('prev-btn').disabled = currentPage === 1;
+            document.getElementById('next-btn').disabled = currentPage >= totalPages;
+            document.getElementById('records-pagination').style.display = 'flex';
+
+        } catch (err) {
+            recordsBody.innerHTML = '<div class="empty color-red">Failed to load records.</div>';
+        }
+    }
+
+    function changePage(delta) {
+        const next = currentPage + delta;
+        if (next >= 1 && next <= totalPages) {
+            loadRecords(next);
+        }
+    }
+
+    function openModal() {
+        // default date to today
+        document.querySelector('#create-form [name="date"]').value = new Date().toISOString().split('T')[0];
+        document.getElementById('modal-error').style.display = 'none';
+        document.getElementById('create-form').reset();
+        document.querySelector('#create-form [name="date"]').value = new Date().toISOString().split('T')[0];
+        document.getElementById('record-modal').classList.add('open');
+    }
+
+    function closeModal() {
+        document.getElementById('record-modal').classList.remove('open');
+    }
+
+    document.getElementById('create-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const form = e.target;
+        const errorDiv = document.getElementById('modal-error');
+        errorDiv.style.display = 'none';
+
+        const payload = {
+            transaction_type: form.transaction_type.value,
+            amount: form.amount.value,
+            category: form.category.value,
+            date: form.date.value,
+            notes: form.notes.value
+        };
+
+        try {
+            const resp = await fetch('/api/records/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (resp.status === 403) throw new Error('Only Admins can create records.');
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(JSON.stringify(err));
+            }
+
+            closeModal();
+            loadRecords(1);
+        } catch (err) {
+            errorDiv.textContent = err.message;
+            errorDiv.style.display = 'block';
+        }
+    });
+
+    // close modal when clicking outside of it
+    document.getElementById('record-modal').addEventListener('click', function (e) {
+        if (e.target === this) closeModal();
+    });
+
+    loadRecords(1);
+</script>
+{% endblock %}

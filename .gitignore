@@ -1,0 +1,11 @@
+# generated automatically - don't commit these
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+db.sqlite3
+.env
+staticfiles/
+finance_frontend/
+*.log
